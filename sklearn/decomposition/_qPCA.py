@@ -15,8 +15,8 @@ from scipy import linalg
 from scipy.special import gammaln
 from scipy.sparse import issparse
 from scipy.sparse.linalg import svds
-import matlab.engine
-import matlab
+#import matlab.engine
+#import matlab
 from ._base import _BasePCA
 from ..utils import check_random_state
 from ..utils._arpack import _init_arpack_v0
@@ -1296,20 +1296,20 @@ class qPCA(_BasePCA):
         else:
             q_runtime = q_runtime[0]
 
-        eng = matlab.engine.start_matlab()
-        c_runtime_matlab = matlab.double(c_runtime.tolist())
-        q_runtime_matlab = matlab.double(q_runtime.tolist())
-        n_matlab = matlab.double(n.tolist())
-        m_matlab = matlab.double(m.tolist())
+        # eng = matlab.engine.start_matlab()
+        # c_runtime_matlab = matlab.double(c_runtime.tolist())
+        # q_runtime_matlab = matlab.double(q_runtime.tolist())
+        # n_matlab = matlab.double(n.tolist())
+        # m_matlab = matlab.double(m.tolist())
 
-        fig = eng.figure()
-        eng.plot3(n_matlab, m_matlab, q_runtime_matlab, '-b', 'DisplayName', 'quantumRuntime', nargout=0)
-        eng.hold("on", nargout=0)
-        eng.plot3(n_matlab, m_matlab, c_runtime_matlab, '-g', 'DisplayName', 'classicRuntime', nargout=0)
-        eng.hold("off", nargout=0)
-        # eng.legend('{\color{green}classicRuntime}', '{\color{blue}quantumRuntime}', nargout=0)
-        eng.ylabel('nFeatures', nargout=0)
-        eng.xlabel('nSamples', nargout=0)
-        eng.title(self.name + ' VS ' + 'q-' + self.name, nargout=0)
-        eng.saveas(fig, saveas, nargout=0)
-        eng.quit()
+        # fig = eng.figure()
+        # eng.plot3(n_matlab, m_matlab, q_runtime_matlab, '-b', 'DisplayName', 'quantumRuntime', nargout=0)
+        # eng.hold("on", nargout=0)
+        # eng.plot3(n_matlab, m_matlab, c_runtime_matlab, '-g', 'DisplayName', 'classicRuntime', nargout=0)
+        # eng.hold("off", nargout=0)
+        # # eng.legend('{\color{green}classicRuntime}', '{\color{blue}quantumRuntime}', nargout=0)
+        # eng.ylabel('nFeatures', nargout=0)
+        # eng.xlabel('nSamples', nargout=0)
+        # eng.title(self.name + ' VS ' + 'q-' + self.name, nargout=0)
+        # eng.saveas(fig, saveas, nargout=0)
+        # eng.quit()

@@ -1528,7 +1528,7 @@ class LSSVC(BaseEstimator):
             An instance of the estimator.
         """
 
-        #X, y = self._validate_data(X, y)
+        X, y = self._validate_data(X, y)
 
         self.X = X
 
