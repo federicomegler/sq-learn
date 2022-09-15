@@ -1,3 +1,4 @@
+from tabnanny import verbose
 import numpy as np
 
 from ._base import _fit_liblinear, BaseSVC, BaseLibSVM
@@ -9,6 +10,7 @@ from ..utils.validation import _deprecate_positional_args
 from ..utils.multiclass import check_classification_targets
 from ..utils.deprecation import deprecated
 from ..metrics.pairwise import linear_kernel, rbf_kernel, polynomial_kernel, sigmoid_kernel
+from scipy.sparse.linalg import cg
 
 
 class LinearSVC(LinearClassifierMixin,
@@ -1496,13 +1498,14 @@ class LSSVC(BaseEstimator):
         relative weight of the training error.
     """
 
-    def __init__(self, kernel='linear', penalty=0.1, degree=3, gamma='scale', coef0=0.0) -> None:
+    def __init__(self, kernel='linear', penalty=0.1, degree=3, gamma='scale', coef0=0.0, verbose=False) -> None:
         super().__init__()
         self.kernel = kernel
         self.penalty = penalty
         self.degree = degree
         self.gamma = gamma
         self.coef0 = coef0
+        self.verbose = verbose
         
         self.alpha = None
         self.b = None
@@ -1510,7 +1513,7 @@ class LSSVC(BaseEstimator):
         self.X = None
 
 
-    def fit(self, X, y):
+    def fit3(self, X, y):
         """Fit the model according to the given training data.
 
         Parameters
@@ -1553,8 +1556,77 @@ class LSSVC(BaseEstimator):
         self.is_fitted_ = True
 
         return self
+    
+
+
+
+    def fit2(self, X, y):
+        """Fit the model according to the given training data.
+
+        Parameters
+        ----------
+        X : {array-like, sparse matrix} of shape (n_samples, n_features)
+            Training vector, where n_samples in the number of samples and
+            n_features is the number of features.
+
+        y : array-like of shape (n_samples,)
+            Target vector relative to X.
+
+        Returns
+        -------
+        self : object
+            An instance of the estimator.
+        """
+
+        X, y = self._validate_data(X, y)
+        self.X = X
+        M = len(X)
+        H = self.get_kernel(X=X) + (self.penalty ** -1) * np.identity(M)
+        H_inv = np.linalg.pinv(H)
+        eta = H_inv @ y
+        nu = H_inv @ np.ones(M)
+        s = np.dot(y, eta)
+        self.b = (np.dot(eta, np.ones(M))/s)
+        self.alpha = eta - nu * self.b
+        self.is_fitted_ = True
+        return self
         
 
+    def fit(self, X, y):
+        """Fit the model according to the given training data.
+
+        Parameters
+        ----------
+        X : {array-like, sparse matrix} of shape (n_samples, n_features)
+            Training vector, where n_samples in the number of samples and
+            n_features is the number of features.
+
+        y : array-like of shape (n_samples,)
+            Target vector relative to X.
+
+        Returns
+        -------
+        self : object
+            An instance of the estimator.
+        """
+
+        X, y = self._validate_data(X, y)
+        self.X = X
+        M = len(X)
+        H = self.get_kernel(X=X) + (self.penalty ** -1) * np.identity(M)
+        if self.verbose:
+            print("Computing eta")
+        eta, exit_code1 = cg(H,y)
+        if self.verbose:
+            print("Computing nu")
+        nu, exit_code2 = cg(H,np.ones(M))
+        s = np.dot(y, eta)
+        self.b = (np.dot(eta, np.ones(M))/s)
+        self.alpha = eta - nu * self.b
+        if self.verbose:
+            print("Fitted")
+        self.is_fitted_ = True
+        return self
     
     def predict(self, X):
         """Perform classification on samples in X.
@@ -1579,7 +1651,7 @@ class LSSVC(BaseEstimator):
 
         y_pred = np.zeros(len(X))
         for i in range(len(X)):
-            y_pred[i] = np.sign(np.dot(self.alpha, self.get_kernel([X[i][:]], self.X)[0]) + self.b)
+            y_pred[i] = np.sign(np.dot(self.alpha, self.get_kernel(self.X, [X[i][:]])) + self.b)
 
         return y_pred
 
@@ -1590,24 +1662,27 @@ class LSSVC(BaseEstimator):
             return linear_kernel(X=X, Y=Y)
 
         elif self.kernel == 'poly':
-            gamma = self._get_gamma()
+            gamma = self._get_gamma(X)
             return polynomial_kernel(X=X, Y=Y, degree=self.degree, gamma=gamma, coef0=self.coef0)
         
         elif self.kernel == 'rbf':
-            gamma = self._get_gamma()
+            gamma = self._get_gamma(X)
             return rbf_kernel(X=X, Y=Y, gamma=gamma)
 
         elif self.kernel == 'sigmoid':
-            gamma = self._get_gamma()
+            gamma = self._get_gamma(X)
             return sigmoid_kernel(X=X, Y=Y, gamma=gamma, coef0=self.coef0)
 
 
-
     def _get_gamma(self, X):
+        X = np.asarray(X)
         gamma=None
         if self.gamma == 'scale':
             gamma = 1 / (X.shape[1] * X.var())
+            if self.verbose:
+                print(f"Gamma: {gamma}, shape: {X.shape[1]}, Variance: {X.var()}")
         elif self.gamma == 'auto':
             gamma = 1 / self.n_features_in_
-        
+            if self.verbose:
+                print(f"Gamma: {gamma}")
         return gamma

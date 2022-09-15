@@ -10,8 +10,8 @@ from ._base import BaseEstimator
 
 class QLSSVC(BaseEstimator):
     """
-    LSSVC implementation. 
-    "Least squares Support Vector Machine Classifier" Suykens, Vandewalle
+    QLSSVC implementation. 
+    "Quantum Least squares Support Vector Machine Classifier" Rebentrost, TODO
 
     Parameters
     ----------
