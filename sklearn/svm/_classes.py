@@ -1628,6 +1628,7 @@ class LSSVC(BaseEstimator):
         self.is_fitted_ = True
         return self
     
+    
     def predict(self, X):
         """Perform classification on samples in X.
 

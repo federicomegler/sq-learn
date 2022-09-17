@@ -1,10 +1,10 @@
+from tabnanny import verbose
 import numpy as np
 
 from ..utils.validation import check_array, check_is_fitted
 from ..metrics.pairwise import linear_kernel, rbf_kernel, sigmoid_kernel, polynomial_kernel
 from ..QuantumUtility.Utility import tomography
 from ._base import BaseEstimator
-
 
 
 
@@ -43,7 +43,7 @@ class QLSSVC(BaseEstimator):
         relative weight of the training error.
     """
 
-    def __init__(self, kernel='linear', penalty=0.1, degree=3, gamma='scale', coef0=0.0, k_eff=100) -> None:
+    def __init__(self, kernel='linear', penalty=0.1, degree=3, gamma='scale', coef0=0.0, k_eff=100, delta=0.01, verbose=False) -> None:
         super().__init__()
         self.kernel = kernel
         self.penalty = penalty
@@ -51,6 +51,8 @@ class QLSSVC(BaseEstimator):
         self.gamma = gamma
         self.coef0 = coef0
         self.k_eff = k_eff
+        self.delta = delta
+        self.verbose = verbose
         
         self.alpha = None
         self.b = None
@@ -77,37 +79,39 @@ class QLSSVC(BaseEstimator):
         """
 
         X, y = self._validate_data(X, y)
-
         self.X = X
 
         M = len(X)
-        #construction of matrix F
-        Z = self.get_kernel(X) + (self.penalty ** -1) * np.identity(M)
+        H = self.get_kernel(X) + (self.penalty ** -1) * np.identity(M)
+        condition_number = self.get_condition_number()
+        if self.verbose:
+            print(f"condition number: {condition_number}")
+        H_pinv = np.linalg.pinv(H, rcond=1/condition_number)
         
-        F = np.block([[0, np.ones((1,M))],
-                      [np.ones((M,1)), Z]])
+        if self.verbose:
+            print("Computing eta...")
+        # eta = (H^-1 * y)/|| (H^-1)*y || -- following corollary 36
+        # where H = X^T * X   +   1/gamma * I
+        eta_ = H_pinv @ y
+        eta_norm = np.linalg.norm(eta_, ord=2)
+        eta = eta_ / eta_norm
+        if self.verbose:
+            print("Computing nu...")
+        # nu = (H^-1 * vec(1))/|| (H^-1)*vec(1) || -- following corollary 36
+        nu_ = H_pinv @ np.ones(M)
+        nu_norm = np.linalg.norm(nu_, ord=2)
+        nu = nu_ / nu_norm
 
+        s = np.inner(y, eta)
 
-        F_hat = F/np.trace(F)
-        self.k_eff = np.linalg.cond(F_hat)
+        if self.verbose:
+            print("Computing b and alpha...")
+        self.b = (np.inner(eta, np.ones(M))) / s
 
-        u, sigma, v = np.linalg.svd(F_hat)
-        sigma = np.where(sigma < 1/self.k_eff, 0, sigma)
+        self.alpha = nu - (eta * self.b)
 
-        F_hat = u @ np.diag(sigma) @ v
-    
-        # solution is [b a] = F^-1 * [0 y]
-        y = np.concatenate(([0], y))
-
-        F_inv = np.linalg.pinv(F)
-
-        sol = np.dot(F_inv, y)
-
-        self.b = sol[0]
-        self.alpha = sol[1:]
-
-        self.is_fitted_ = True
-
+        if self.verbose:
+            print(f"Intercept: {self.b}\nFitted!")
         return self
         
 
@@ -135,11 +139,23 @@ class QLSSVC(BaseEstimator):
 
         y_pred = np.zeros(len(X))
         for i in range(len(X)):
-            y_pred[i] = np.sign(np.dot(self.alpha, self.get_kernel([X[i][:]], self.X)[0]) + self.b)
+            y_pred[i] = np.sign(np.dot(self.alpha, self.get_kernel(self.X, [X[i][:]])) + self.b)
 
         return y_pred
 
 
+    def get_condition_number(self):
+        if self.verbose:
+            print("Start evaluating condition number:")
+        norm = np.linalg.norm(x=self.X,ord=2)
+        if self.verbose:
+            print(f"\tThe norm of the matrix X is: {norm}")
+        return self.k_eff * np.sqrt((norm**2 + self.penalty)/(norm**2 + self.penalty * self.k_eff**2))
+
+    # TODO evaluate error
+    def get_error(self):
+
+        return
     
     def get_kernel(self, X, Y=None):
         if self.kernel == 'linear':
