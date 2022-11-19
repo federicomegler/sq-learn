@@ -1,4 +1,3 @@
-from tabnanny import verbose
 import numpy as np
 
 from ._base import _fit_liblinear, BaseSVC, BaseLibSVM
@@ -1513,7 +1512,7 @@ class LSSVC(BaseEstimator):
         self.X = None
 
 
-    def fit3(self, X, y):
+    def fit(self, X, y):
         """Fit the model according to the given training data.
 
         Parameters
@@ -1530,27 +1529,25 @@ class LSSVC(BaseEstimator):
         self : object
             An instance of the estimator.
         """
-
         X, y = self._validate_data(X, y)
-
         self.X = X
 
         M = len(X)
         #construction of matrix F
         Z = self.get_kernel(X) + (self.penalty ** -1) * np.identity(M)
-        
-        F = np.block([[0, np.ones((1,M))],
-                      [np.ones((M,1)), Z]])
-        
+        mult = 1/np.sqrt(M)
+        if self.verbose:
+            print(mult)
+        F = np.r_[[np.append(0,np.ones(M)*mult)], np.c_[np.ones(M)*mult, Z]]
         
         # solution is [b a] = F^-1 * [0 y]
-        y = np.concatenate(([0], y))
+        y = np.append(0,y)
 
         F_inv = np.linalg.pinv(F)
 
         sol = np.dot(F_inv, y)
 
-        self.b = sol[0]
+        self.b = sol[0] * mult
         self.alpha = sol[1:]
 
         self.is_fitted_ = True
@@ -1558,41 +1555,7 @@ class LSSVC(BaseEstimator):
         return self
     
 
-
-
-    def fit2(self, X, y):
-        """Fit the model according to the given training data.
-
-        Parameters
-        ----------
-        X : {array-like, sparse matrix} of shape (n_samples, n_features)
-            Training vector, where n_samples in the number of samples and
-            n_features is the number of features.
-
-        y : array-like of shape (n_samples,)
-            Target vector relative to X.
-
-        Returns
-        -------
-        self : object
-            An instance of the estimator.
-        """
-
-        X, y = self._validate_data(X, y)
-        self.X = X
-        M = len(X)
-        H = self.get_kernel(X=X) + (self.penalty ** -1) * np.identity(M)
-        H_inv = np.linalg.pinv(H)
-        eta = H_inv @ y
-        nu = H_inv @ np.ones(M)
-        s = np.dot(y, eta)
-        self.b = (np.dot(eta, np.ones(M))/s)
-        self.alpha = eta - nu * self.b
-        self.is_fitted_ = True
-        return self
-        
-
-    def fit(self, X, y):
+    def fit3(self, X, y):
         """Fit the model according to the given training data.
 
         Parameters
@@ -1622,7 +1585,7 @@ class LSSVC(BaseEstimator):
         nu, exit_code2 = cg(H,np.ones(M))
         s = np.dot(y, eta)
         self.b = (np.dot(eta, np.ones(M))/s)
-        self.alpha = eta - nu * self.b
+        self.alpha = eta - self.b * nu
         if self.verbose:
             print("Fitted")
         self.is_fitted_ = True
@@ -1687,3 +1650,4 @@ class LSSVC(BaseEstimator):
             if self.verbose:
                 print(f"Gamma: {gamma}")
         return gamma
+

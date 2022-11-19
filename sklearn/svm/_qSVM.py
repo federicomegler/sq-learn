@@ -77,6 +77,11 @@ class QLSSVC(BaseEstimator):
         self : object
             An instance of the estimator.
         """
+        #
+        #        [ (X * X^T  +  gamma^-1 * I)^-1  *  X^T ]   * y
+        #     ------------------------------------------------------  ~= H^-1 * y
+        #       || (X * X^T  +  gamma^-1 * I)^-1  *  X^T    * y ||
+        #
 
         X, y = self._validate_data(X, y)
         self.X = X
@@ -109,6 +114,68 @@ class QLSSVC(BaseEstimator):
         self.b = (np.inner(eta, np.ones(M))) / s
 
         self.alpha = nu - (eta * self.b)
+
+        if self.verbose:
+            print(f"Intercept: {self.b}\nFitted!")
+        return self
+
+
+
+    
+    def fit_fix(self, X, y):
+        """Fit the model according to the given training data.
+
+        Parameters
+        ----------
+        X : {array-like, sparse matrix} of shape (n_samples, n_features)
+            Training vector, where n_samples in the number of samples and
+            n_features is the number of features.
+
+        y : array-like of shape (n_samples,)
+            Target vector relative to X.
+
+        Returns
+        -------
+        self : object
+            An instance of the estimator.
+        """
+        #
+        #        [ (X * X^T  +  gamma^-1 * I)^-1  *  X^T ]   * y
+        #     ------------------------------------------------------  ~= H^-1 * y = eta
+        #       || (X * X^T  +  gamma^-1 * I)^-1  *  X^T    * y ||
+        #
+
+        X, y = self._validate_data(X, y)
+        self.X = X
+
+        M = len(X)
+        H = self.get_kernel(X) + (self.penalty ** -1) * np.identity(M)
+        condition_number = self.get_condition_number()
+        if self.verbose:
+            print(f"condition number: {condition_number}")
+        H_pinv = np.linalg.pinv(H)
+        
+        if self.verbose:
+            print("Computing eta...")
+        # eta = (H^-1 * y)/|| (H^-1)*y || -- following corollary 36
+        # where H = X^T * X   +   1/gamma * I
+        eta = H_pinv @ y
+        eta_norm = np.linalg.norm(eta, ord=2)
+        eta = eta / eta_norm
+        if self.verbose:
+            print("Computing nu...")
+        # nu = (H^-1 * vec(1))/|| (H^-1)*vec(1) || -- following corollary 36
+        nu = H_pinv @ np.ones(M)
+        nu_norm = np.linalg.norm(nu, ord=2)
+        nu = nu / nu_norm
+
+        s = np.inner(y, eta)
+
+        if self.verbose:
+            print("Computing b and alpha...")
+        self.b = (np.inner(eta, np.ones(M))) / s
+
+        self.alpha = eta - (nu * self.b)
 
         if self.verbose:
             print(f"Intercept: {self.b}\nFitted!")
