@@ -5,13 +5,14 @@ from ..utils.validation import check_array, check_is_fitted
 from ..metrics.pairwise import linear_kernel, rbf_kernel, sigmoid_kernel, polynomial_kernel
 from ..QuantumUtility.Utility import tomography
 from ._base import BaseEstimator
+from ..metrics import accuracy_score
 
 
 
 class QLSSVC(BaseEstimator):
     """
-    QLSSVC implementation. 
-    "Quantum Least squares Support Vector Machine Classifier" Rebentrost, TODO
+    LSSVC implementation. 
+    "Least squares Support Vector Machine Classifier" Suykens, Vandewalle
 
     Parameters
     ----------
@@ -43,22 +44,40 @@ class QLSSVC(BaseEstimator):
         relative weight of the training error.
     """
 
-    def __init__(self, kernel='linear', penalty=0.1, degree=3, gamma='scale', coef0=0.0, k_eff=100, delta=0.01, verbose=False) -> None:
+    def __init__(self, kernel='linear', penalty=0.1, degree=3, gamma='scale', coef0=0.0, verbose=False, algorithm='classic') -> None:
         super().__init__()
         self.kernel = kernel
         self.penalty = penalty
         self.degree = degree
         self.gamma = gamma
         self.coef0 = coef0
-        self.k_eff = k_eff
-        self.delta = delta
         self.verbose = verbose
+        self.algorithm = algorithm
         
         self.alpha = None
         self.b = None
         self.is_fitted_ = False
         self.X = None
+        self.normX = None
 
+    def _classical_fit(self, X, y):
+        M = len(X)
+        mult = 1/M
+        #construction of matrix F
+        Z = self.get_kernel(X) + (self.penalty ** -1) * np.identity(M)
+        F = np.r_[[np.append(0,np.ones(M) * mult)], np.c_[np.ones(M) * mult, Z]]
+        
+        # solution is [b a] = F^-1 * [0 y]
+        y = np.append(0,y)
+
+        F_inv = np.linalg.pinv(F)
+
+        sol = np.dot(F_inv, y)
+
+        return sol[0] * mult, sol[1:]
+    
+    def _cg_fit():
+        return
 
     def fit(self, X, y):
         """Fit the model according to the given training data.
@@ -77,111 +96,22 @@ class QLSSVC(BaseEstimator):
         self : object
             An instance of the estimator.
         """
-        #
-        #        [ (X * X^T  +  gamma^-1 * I)^-1  *  X^T ]   * y
-        #     ------------------------------------------------------  ~= H^-1 * y
-        #       || (X * X^T  +  gamma^-1 * I)^-1  *  X^T    * y ||
-        #
-
         X, y = self._validate_data(X, y)
-        self.X = X
+        self.normX = np.linalg.norm(X, ord='fro')
+        self.X = X / self.normX
 
-        M = len(X)
-        H = self.get_kernel(X) + (self.penalty ** -1) * np.identity(M)
-        condition_number = self.get_condition_number()
-        if self.verbose:
-            print(f"condition number: {condition_number}")
-        H_pinv = np.linalg.pinv(H, rcond=1/condition_number)
+        y = y / np.linalg.norm(y)
+
+        if self.algorithm == 'classic':
+            self.b, self.alpha = self._classical_fit(X, y)
+        elif self.algorithm == '':
+            return
         
-        if self.verbose:
-            print("Computing eta...")
-        # eta = (H^-1 * y)/|| (H^-1)*y || -- following corollary 36
-        # where H = X^T * X   +   1/gamma * I
-        eta_ = H_pinv @ y
-        eta_norm = np.linalg.norm(eta_, ord=2)
-        eta = eta_ / eta_norm
-        if self.verbose:
-            print("Computing nu...")
-        # nu = (H^-1 * vec(1))/|| (H^-1)*vec(1) || -- following corollary 36
-        nu_ = H_pinv @ np.ones(M)
-        nu_norm = np.linalg.norm(nu_, ord=2)
-        nu = nu_ / nu_norm
 
-        s = np.inner(y, eta)
+        self.is_fitted_ = True
 
-        if self.verbose:
-            print("Computing b and alpha...")
-        self.b = (np.inner(eta, np.ones(M))) / s
-
-        self.alpha = nu - (eta * self.b)
-
-        if self.verbose:
-            print(f"Intercept: {self.b}\nFitted!")
         return self
-
-
-
     
-    def fit_fix(self, X, y):
-        """Fit the model according to the given training data.
-
-        Parameters
-        ----------
-        X : {array-like, sparse matrix} of shape (n_samples, n_features)
-            Training vector, where n_samples in the number of samples and
-            n_features is the number of features.
-
-        y : array-like of shape (n_samples,)
-            Target vector relative to X.
-
-        Returns
-        -------
-        self : object
-            An instance of the estimator.
-        """
-        #
-        #        [ (X * X^T  +  gamma^-1 * I)^-1  *  X^T ]   * y
-        #     ------------------------------------------------------  ~= H^-1 * y = eta
-        #       || (X * X^T  +  gamma^-1 * I)^-1  *  X^T    * y ||
-        #
-
-        X, y = self._validate_data(X, y)
-        self.X = X
-
-        M = len(X)
-        H = self.get_kernel(X) + (self.penalty ** -1) * np.identity(M)
-        condition_number = self.get_condition_number()
-        if self.verbose:
-            print(f"condition number: {condition_number}")
-        H_pinv = np.linalg.pinv(H)
-        
-        if self.verbose:
-            print("Computing eta...")
-        # eta = (H^-1 * y)/|| (H^-1)*y || -- following corollary 36
-        # where H = X^T * X   +   1/gamma * I
-        eta = H_pinv @ y
-        eta_norm = np.linalg.norm(eta, ord=2)
-        eta = eta / eta_norm
-        if self.verbose:
-            print("Computing nu...")
-        # nu = (H^-1 * vec(1))/|| (H^-1)*vec(1) || -- following corollary 36
-        nu = H_pinv @ np.ones(M)
-        nu_norm = np.linalg.norm(nu, ord=2)
-        nu = nu / nu_norm
-
-        s = np.inner(y, eta)
-
-        if self.verbose:
-            print("Computing b and alpha...")
-        self.b = (np.inner(eta, np.ones(M))) / s
-
-        self.alpha = eta - (nu * self.b)
-
-        if self.verbose:
-            print(f"Intercept: {self.b}\nFitted!")
-        return self
-        
-
     
     def predict(self, X):
         """Perform classification on samples in X.
@@ -209,44 +139,92 @@ class QLSSVC(BaseEstimator):
             y_pred[i] = np.sign(np.dot(self.alpha, self.get_kernel(self.X, [X[i][:]])) + self.b)
 
         return y_pred
+    
+    def get_h(self, X):
+        check_array(X)
+        check_is_fitted(self)
+
+        h = np.zeros(len(X))
+        for i in range(len(X)):
+            h[i] = np.dot(self.alpha, self.get_kernel(self.X, [X[i][:]])) + self.b
+
+        return h
+    
+    def get_P(self, X):
+        check_array(X)
+        check_is_fitted(self)
+        N = len(self.X)
+
+        P = np.zeros(len(X))
+        betas = np.zeros(len(X))
+        for i in range(len(X)):
+            h = np.dot(self.alpha, self.get_kernel(self.X, [X[i][:]])) + self.b
+            Nx = N*np.linalg.norm(X[i], ord=2) + 1
+            Nu = self.b ** 2
+            for j in range(len(self.X)):
+                Nu = Nu + np.sum((self.alpha[j]**2) * (np.linalg.norm(self.X[i])**2))
+            betas[i] = np.sqrt(Nx * Nu)
+            P[i] = 0.5 * (1 - h / betas[i])
+        
+        return P, betas
+
+    
+    def score(self, X, y):
+        """Return the mean accuracy on the given test data and labels.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Test samples.
+
+        y : array-like of shape (n_samples,) or (n_samples, n_outputs)
+            True labels for X.
+
+        Returns
+        -------
+        score : float
+            Mean accuracy of self.predict(X) wrt. y.
+
+        Returns
+        -------
+        self : object
+            An instance of the estimator.
+        """
+        check_is_fitted(self)
+
+        y_pred = self.predict(X=X)
+        return accuracy_score(y_true=y, y_pred=y_pred)
+        
 
 
-    def get_condition_number(self):
-        if self.verbose:
-            print("Start evaluating condition number:")
-        norm = np.linalg.norm(x=self.X,ord=2)
-        if self.verbose:
-            print(f"\tThe norm of the matrix X is: {norm}")
-        return self.k_eff * np.sqrt((norm**2 + self.penalty)/(norm**2 + self.penalty * self.k_eff**2))
 
-    # TODO evaluate error
-    def get_error(self):
-
-        return
     
     def get_kernel(self, X, Y=None):
         if self.kernel == 'linear':
             return linear_kernel(X=X, Y=Y)
 
         elif self.kernel == 'poly':
-            gamma = self._get_gamma()
+            gamma = self._get_gamma(X)
             return polynomial_kernel(X=X, Y=Y, degree=self.degree, gamma=gamma, coef0=self.coef0)
         
         elif self.kernel == 'rbf':
-            gamma = self._get_gamma()
+            gamma = self._get_gamma(X)
             return rbf_kernel(X=X, Y=Y, gamma=gamma)
 
         elif self.kernel == 'sigmoid':
-            gamma = self._get_gamma()
+            gamma = self._get_gamma(X)
             return sigmoid_kernel(X=X, Y=Y, gamma=gamma, coef0=self.coef0)
 
 
-
     def _get_gamma(self, X):
+        X = np.asarray(X)
         gamma=None
         if self.gamma == 'scale':
             gamma = 1 / (X.shape[1] * X.var())
+            if self.verbose:
+                print(f"Gamma: {gamma}, shape: {X.shape[1]}, Variance: {X.var()}")
         elif self.gamma == 'auto':
             gamma = 1 / self.n_features_in_
-        
+            if self.verbose:
+                print(f"Gamma: {gamma}")
         return gamma

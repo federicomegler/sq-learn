@@ -15,12 +15,13 @@ from ._optics import (OPTICS, cluster_optics_dbscan, compute_optics_graph,
                       cluster_optics_xi)
 from ._bicluster import SpectralBiclustering, SpectralCoclustering
 from ._birch import Birch
-from ._dmeans import DMeans_
+#from ._dmeans import DMeans_
+from ._dmeans import qMeans_
 
-__all__ = ['DMeans_',]
+#__all__ = ['DMeans_',]
 
 
-'''__all__ = ['AffinityPropagation',
+__all__ = ['AffinityPropagation',
            'AgglomerativeClustering',
            'Birch',
            'DBSCAN',
@@ -45,5 +46,5 @@ __all__ = ['DMeans_',]
            'spectral_clustering',
            'ward_tree',
            'SpectralBiclustering',
-           'SpectralCoclustering']
-'''
+           'SpectralCoclustering',
+           'qMeans_']
