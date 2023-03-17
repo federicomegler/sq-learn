@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.sparse.linalg import cg
 
 from ._base import _fit_liblinear, BaseSVC, BaseLibSVM
 from ..base import BaseEstimator, ClassifierMixin, RegressorMixin, OutlierMixin
@@ -1528,8 +1529,16 @@ class LSSVC(BaseEstimator):
 
         return sol[0], sol[1:]
     
-    def _cg_fit():
-        return
+    def _cg_fit(self, X, y):
+        N = len(X)
+        H = self.get_kernel(X) + (self.penalty**-1) * np.identity(N)
+        d = np.ones(N)
+        eta = cg(H, y, maxiter=1000)
+        nu = cg(H, d, maxiter=1000)
+        s = y.T @ eta
+        b = (eta @ d)/s
+        alpha = nu - eta * b
+        return b, alpha
 
     def fit(self, X, y):
         """Fit the model according to the given training data.
@@ -1553,14 +1562,19 @@ class LSSVC(BaseEstimator):
 
         if self.algorithm == 'classic':
             self.b, self.alpha = self._classical_fit(X, y)
-        elif self.algorithm == '':
-            return
-        
+        elif self.algorithm == 'cg':
+            self.b, self.alpha = self._cg_fit(X, y)
+        else:
+            raise Exception("Algorithm not implemented")
+
+
         if self.kernel == 'linear':
-            N = len(self.X)
-            self.coef_ = np.zeros(N)
+            N, d = self.X.shape
+            self.coef_ = np.zeros(d)
             for i in range(N):
-                self.coef_[i] = np.sum(self.alpha[i] * self.X[i])
+                ay = self.alpha[i]
+                w = ay * self.X[i]
+                self.coef_ = np.add(self.coef_, w)
 
         self.is_fitted_ = True
 

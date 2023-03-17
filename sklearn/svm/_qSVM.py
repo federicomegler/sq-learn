@@ -59,22 +59,24 @@ class QLSSVC(BaseEstimator):
         self.is_fitted_ = False
         self.X = None
         self.normX = None
+        self.coef_ = None
+        self.n_features_in_ = None
 
-    def _classical_fit(self, X, y):
-        M = len(X)
-        mult = 1/M
+
+    def _classical_fit(self, y):
+        N = len(self.X)
+
         #construction of matrix F
-        Z = self.get_kernel(X) + (self.penalty ** -1) * np.identity(M)
-        F = np.r_[[np.append(0,np.ones(M) * mult)], np.c_[np.ones(M) * mult, Z]]
+        Z = self.get_kernel(self.X) + (self.penalty ** -1) * np.identity(N)
+        F = np.r_[[np.append(0,np.ones(N))], np.c_[np.ones(N), Z]]
         
         # solution is [b a] = F^-1 * [0 y]
         y = np.append(0,y)
-
         F_inv = np.linalg.pinv(F)
 
         sol = np.dot(F_inv, y)
-
-        return sol[0] * mult, sol[1:]
+        
+        return sol[0], sol[1:]
     
     def _cg_fit():
         return
@@ -97,15 +99,21 @@ class QLSSVC(BaseEstimator):
             An instance of the estimator.
         """
         X, y = self._validate_data(X, y)
-        self.normX = np.linalg.norm(X, ord='fro')
-        self.X = X / self.normX
-
-        y = y / np.linalg.norm(y)
+        self.X = X
 
         if self.algorithm == 'classic':
-            self.b, self.alpha = self._classical_fit(X, y)
+            self.b, self.alpha = self._classical_fit(y)
         elif self.algorithm == '':
             return
+
+
+        if self.kernel == 'linear':
+            N, d = self.X.shape
+            self.coef_ = np.zeros(d)
+            for i in range(N):
+                ay = self.alpha[i]
+                w = ay * self.X[i]
+                self.coef_ = np.add(self.coef_, w)
         
 
         self.is_fitted_ = True
@@ -134,6 +142,31 @@ class QLSSVC(BaseEstimator):
         check_array(X)
         check_is_fitted(self)
 
+        P = self.get_P(X)
+        y_pred = np.where(P <= 0.5, 1., -1.)
+
+        return y_pred
+    
+    def classical_predict(self, X):
+        """Perform classification on samples in X.
+
+        For a one-class model, +1 or -1 is returned.
+
+        Parameters
+        ----------
+        X : {array-like, sparse matrix} of shape (n_samples, n_features) or \
+                (n_samples_test, n_samples_train)
+            For kernel="precomputed", the expected shape of X is
+            (n_samples_test, n_samples_train).
+
+        Returns
+        -------
+        y_pred : ndarray of shape (n_samples,)
+            Class labels for samples in X.
+        """
+        check_array(X)
+        check_is_fitted(self)
+
         y_pred = np.zeros(len(X))
         for i in range(len(X)):
             y_pred[i] = np.sign(np.dot(self.alpha, self.get_kernel(self.X, [X[i][:]])) + self.b)
@@ -150,23 +183,26 @@ class QLSSVC(BaseEstimator):
 
         return h
     
+    def get_betas(self, X):
+
+        return
+    
     def get_P(self, X):
         check_array(X)
         check_is_fitted(self)
         N = len(self.X)
 
         P = np.zeros(len(X))
-        betas = np.zeros(len(X))
         for i in range(len(X)):
             h = np.dot(self.alpha, self.get_kernel(self.X, [X[i][:]])) + self.b
             Nx = N*np.linalg.norm(X[i], ord=2) + 1
             Nu = self.b ** 2
             for j in range(len(self.X)):
                 Nu = Nu + np.sum((self.alpha[j]**2) * (np.linalg.norm(self.X[i])**2))
-            betas[i] = np.sqrt(Nx * Nu)
-            P[i] = 0.5 * (1 - h / betas[i])
+            beta = np.sqrt(Nx * Nu)
+            P[i] = 0.5 * (1 - h / beta)
         
-        return P, betas
+        return P
 
     
     def score(self, X, y):
