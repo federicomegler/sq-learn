@@ -61,6 +61,7 @@ class QLSSVC(BaseEstimator):
         self.normX = None
         self.coef_ = None
         self.n_features_in_ = None
+        self.Nu = None
 
 
     def _classical_fit(self, y):
@@ -106,6 +107,9 @@ class QLSSVC(BaseEstimator):
         elif self.algorithm == '':
             return
 
+        self.Nu = self.b ** 2
+        for j in range(len(self.X)):
+            self.Nu = self.Nu + np.sum((self.alpha[j]**2) * (np.linalg.norm(self.X[j])**2))
 
         if self.kernel == 'linear':
             N, d = self.X.shape
@@ -184,8 +188,8 @@ class QLSSVC(BaseEstimator):
         return h
     
     def get_betas(self, X):
-
-        return
+        N = len(self.X)
+        return [np.sqrt((N*np.linalg.norm(x) + 1) * self.Nu) for x in X]
     
     def get_P(self, X):
         check_array(X)
@@ -196,10 +200,7 @@ class QLSSVC(BaseEstimator):
         for i in range(len(X)):
             h = np.dot(self.alpha, self.get_kernel(self.X, [X[i][:]])) + self.b
             Nx = N*np.linalg.norm(X[i], ord=2) + 1
-            Nu = self.b ** 2
-            for j in range(len(self.X)):
-                Nu = Nu + np.sum((self.alpha[j]**2) * (np.linalg.norm(self.X[i])**2))
-            beta = np.sqrt(Nx * Nu)
+            beta = np.sqrt(Nx * self.Nu)
             P[i] = 0.5 * (1 - h / beta)
         
         return P
