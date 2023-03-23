@@ -1,5 +1,6 @@
 from tabnanny import verbose
 import numpy as np
+from scipy.linalg import ishermitian
 
 from ..utils.validation import check_array, check_is_fitted
 from ..metrics.pairwise import linear_kernel, rbf_kernel, sigmoid_kernel, polynomial_kernel
@@ -66,17 +67,11 @@ class QLSSVC(BaseEstimator):
 
     def _classical_fit(self, y):
         N = len(self.X)
-
-        #construction of matrix F
-        Z = self.get_kernel(self.X) + (self.penalty ** -1) * np.identity(N)
-        F = np.r_[[np.append(0,np.ones(N))], np.c_[np.ones(N), Z]]
         
-        # solution is [b a] = F^-1 * [0 y]
         y = np.append(0,y)
-        F_inv = np.linalg.pinv(F)
-
-        sol = np.dot(F_inv, y)
-        
+        F = np.linalg.pinv(np.r_[[np.append(0,np.ones(N))], np.c_[np.ones(N), self.get_kernel(self.X) + (self.penalty ** -1) * np.identity(N)]]
+                           , hermitian=True)
+        sol = np.dot(F, y)
         return sol[0], sol[1:]
     
     def _cg_fit():
@@ -107,9 +102,8 @@ class QLSSVC(BaseEstimator):
         elif self.algorithm == '':
             return
 
-        self.Nu = self.b ** 2
-        for j in range(len(self.X)):
-            self.Nu = self.Nu + np.sum((self.alpha[j]**2) * (np.linalg.norm(self.X[j])**2))
+        self.Nu = self.b ** 2 + np.sum([self.alpha[index]**2 * np.linalg.norm(x)**2 for index, x in enumerate(self.X)])
+            
 
         if self.kernel == 'linear':
             N, d = self.X.shape
@@ -204,6 +198,7 @@ class QLSSVC(BaseEstimator):
             P[i] = 0.5 * (1 - h / beta)
         
         return P
+
 
     
     def score(self, X, y):
