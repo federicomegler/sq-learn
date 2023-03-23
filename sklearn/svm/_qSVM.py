@@ -175,28 +175,22 @@ class QLSSVC(BaseEstimator):
         check_array(X)
         check_is_fitted(self)
 
-        h = np.zeros(len(X))
-        for i in range(len(X)):
-            h[i] = np.dot(self.alpha, self.get_kernel(self.X, [X[i][:]])) + self.b
-
-        return h
+        return np.asarray([(np.dot(self.alpha, self.get_kernel(self.X, [x])) + self.b)[0] for x in X])
     
     def get_betas(self, X):
+        check_array(X)
+        check_is_fitted(self)
         N = len(self.X)
-        return [np.sqrt((N*np.linalg.norm(x) + 1) * self.Nu) for x in X]
+        return np.asarray([np.sqrt((N*np.linalg.norm(x) + 1) * self.Nu) for x in X])
     
     def get_P(self, X):
         check_array(X)
         check_is_fitted(self)
         N = len(self.X)
+        h = self.get_h(X)
+        beta = self.get_betas(X)
+        P = 0.5 * (1 - h/beta)
 
-        P = np.zeros(len(X))
-        for i in range(len(X)):
-            h = np.dot(self.alpha, self.get_kernel(self.X, [X[i][:]])) + self.b
-            Nx = N*np.linalg.norm(X[i], ord=2) + 1
-            beta = np.sqrt(Nx * self.Nu)
-            P[i] = 0.5 * (1 - h / beta)
-        
         return P
 
 
