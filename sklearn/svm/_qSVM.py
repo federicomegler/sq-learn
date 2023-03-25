@@ -219,7 +219,7 @@ class QLSSVC(BaseEstimator):
         hs = self.get_h(X)
         Ps = self.get_P(X)
         cond = self.cond
-        rel_comp = (cond * (betas - hs) * self.alpha_F) / (hs * np.sqrt(Ps))
+        rel_comp = (cond * (betas - np.abs(hs)) * self.alpha_F) / (np.abs(hs) * np.sqrt(Ps))
         abs_comp = (cond * betas * self.alpha_F)
 
         return (betas, hs, Ps, cond, rel_comp, abs_comp)
