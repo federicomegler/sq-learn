@@ -45,7 +45,8 @@ class QLSSVC(BaseEstimator):
         relative weight of the training error.
     """
 
-    def __init__(self, kernel='linear', penalty=0.1, degree=3, gamma='scale', coef0=0.0, verbose=False, algorithm='classic') -> None:
+    def __init__(self, kernel='linear', penalty=0.1, degree=3, gamma='scale', coef0=0.0, verbose=False, algorithm='classic',
+                 low_rank=False, var=0.9) -> None:
         super().__init__()
         self.kernel = kernel
         self.penalty = penalty
@@ -54,6 +55,8 @@ class QLSSVC(BaseEstimator):
         self.coef0 = coef0
         self.verbose = verbose
         self.algorithm = algorithm
+        self.low_rank = low_rank
+        self.var = var
         
         self.alpha = None
         self.b = None
@@ -66,13 +69,34 @@ class QLSSVC(BaseEstimator):
         self.cond = None
 
 
+
     def _classical_fit(self, y):
         N = len(self.X)
-        
         y = np.append(0,y)
-        F = np.r_[[np.append(0,np.ones(N))], np.c_[np.ones(N), self.get_kernel(self.X) + (self.penalty ** -1) * np.identity(N)]]
-        self.cond = np.linalg.cond(F)
-        F = np.linalg.pinv(F, hermitian=True)
+        if self.low_rank:
+            if 0 <= self.var <= 1.:
+                F = np.r_[[np.append(0,np.ones(N))], np.c_[np.ones(N), self.get_kernel(self.X) + (self.penalty ** -1) * np.identity(N)]]
+                p = 0
+                u,s,v = np.linalg.svd(F, hermitian=True)
+                s_new = np.zeros(len(s))
+                sums = np.sum(s**2)
+                for index, i in enumerate(s):
+                    s_new[index] = i
+                    p = p + i**2 / sums
+                    if p >= self.var:
+                        self.cond = s_new[0] / s_new[index]
+                        break
+                
+                # computing inverse of F
+                F = u @ np.diag([ 1/x if x>0 else x for x in s_new]) @ v
+            else:
+                raise Exception("QLSSVC.var shoud be between 0 and 1")
+        else:    
+            F = np.r_[[np.append(0,np.ones(N))], np.c_[np.ones(N), self.get_kernel(self.X) + (self.penalty ** -1) * np.identity(N)]]
+            u,s,v = np.linalg.svd(F, hermitian=True)
+            F = u @ np.diag([ 1/x if x>0 else x for x in s]) @ v
+            self.cond = s[0] / s[-1]
+            
         sol = np.dot(F, y)
         return sol[0], sol[1:]
     
@@ -104,11 +128,12 @@ class QLSSVC(BaseEstimator):
         elif self.algorithm == '':
             return
         
-        spectral_norm = np.linalg.norm(X, ord=2)
-        fro_norm = np.linalg.norm(X)
-        p = spectral_norm**2 / fro_norm**2
-        self.alpha_F = 1/p
+        if self.low_rank:
+            self.alpha_F = (1/(np.linalg.norm(X, ord=2)**2 / np.linalg.norm(X)**2)) * (np.linalg.norm(np.append(0,y)) / np.linalg.norm(np.append(self.b, self.alpha)))
+        else:
+            self.alpha_F = 1/(np.linalg.norm(X, ord=2)**2 / np.linalg.norm(X)**2)
 
+        
         self.Nu = self.b ** 2 + np.sum([self.alpha[index]**2 * np.linalg.norm(x)**2 for index, x in enumerate(self.X)])
             
 
@@ -178,6 +203,7 @@ class QLSSVC(BaseEstimator):
 
         return y_pred
     
+    
     def get_h(self, X):
         check_array(X)
         check_is_fitted(self)
@@ -205,7 +231,7 @@ class QLSSVC(BaseEstimator):
             betas = self.get_betas(X)
             hs = np.abs(self.get_h(X))
             Ps = self.get_P(X)
-
+            
             return (self.cond * (betas - hs) * self.alpha_F) / (epsilon * hs * np.sqrt(Ps))
         else:
             betas = self.get_betas(X)
@@ -254,7 +280,18 @@ class QLSSVC(BaseEstimator):
         return accuracy_score(y_true=y, y_pred=y_pred)
         
 
-
+    def low_rank_approx(self, A=None, r=1, hermitian=False):
+        """
+        Computes an r-rank approximation of a matrix
+        given the component u, s, and v of it's SVD
+        Requires: numpy
+        """
+        
+        u, s, v = np.linalg.svd(A, full_matrices=False, hermitian=hermitian)
+        Ar = np.zeros((len(u), len(v)))
+        for i in range(r):
+            Ar += s[i] * np.outer(u.T[i], v[i])
+        return Ar
 
     
     def get_kernel(self, X, Y=None):
