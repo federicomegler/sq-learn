@@ -74,7 +74,7 @@ class QLSSVC(BaseEstimator):
         N = len(self.X)
         y = np.append(0,y)
         if self.low_rank:
-            if 0 <= self.var <= 1.:
+            if 0 <= self.var < 1.:
                 F = np.r_[[np.append(0,np.ones(N))], np.c_[np.ones(N), self.get_kernel(self.X) + (self.penalty ** -1) * np.identity(N)]]
                 p = 0
                 u,s,v = np.linalg.svd(F, hermitian=True)
@@ -89,8 +89,20 @@ class QLSSVC(BaseEstimator):
                 
                 # computing inverse of F
                 F = u @ np.diag([ 1/x if x>0 else x for x in s_new]) @ v
+            elif self.var >= 1.:
+                F = np.r_[[np.append(0,np.ones(N))], np.c_[np.ones(N), self.get_kernel(self.X) + (self.penalty ** -1) * np.identity(N)]]
+                u,s,v = np.linalg.svd(F, hermitian=True)
+                s_new = np.zeros(len(s))
+                for index, i in enumerate(s):
+                    s_new[index] = i
+                    if index == self.var - 1:
+                        self.cond = s_new[0] / s_new[index]
+                        break
+                
+                # computing inverse of F
+                F = u @ np.diag([ 1/x if x>0 else x for x in s_new]) @ v
             else:
-                raise Exception("QLSSVC.var shoud be between 0 and 1")
+                raise Exception("QLSSVC.var shoud be greater than 0")
         else:    
             F = np.r_[[np.append(0,np.ones(N))], np.c_[np.ones(N), self.get_kernel(self.X) + (self.penalty ** -1) * np.identity(N)]]
             u,s,v = np.linalg.svd(F, hermitian=True)
