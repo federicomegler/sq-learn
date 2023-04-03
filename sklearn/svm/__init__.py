@@ -24,5 +24,4 @@ __all__ = ['LinearSVC',
            'SVR',
            'LSSVC',
            'l1_min_c',
-           'QLSSVC',
-           'VapnikLSSVC']
+           'QLSSVC']
