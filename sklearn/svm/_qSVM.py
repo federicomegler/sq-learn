@@ -110,7 +110,7 @@ class QLSSVC(BaseEstimator):
         sol = np.dot(F, y)
         return sol[0], sol[1:]
     
-    def _cg_fit():
+    def _cg_fit(self):
         return
 
     def fit(self, X, y):
@@ -235,6 +235,9 @@ class QLSSVC(BaseEstimator):
         P = 0.5 * (1 - h/beta)
 
         return P
+    
+    def get_training_complexity(self):
+        return self.cond * self.alpha_F
     
     def get_classifcation_complexity(self, X, relative_error=False, epsilon=1):
         if relative_error:
