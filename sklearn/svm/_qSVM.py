@@ -65,6 +65,7 @@ class QLSSVC(BaseEstimator):
         self.Nu = None
         self.cond = None
         self.alpha_F = None
+        self.normF = None
 
 
 
@@ -83,6 +84,7 @@ class QLSSVC(BaseEstimator):
                     p = p + i**2 / sums
                     if p >= self.var:
                         self.cond = s_new[0] / s_new[index]
+                        self.normF = s_new[0]
                         break
                 
                 # computing inverse of F
@@ -95,6 +97,7 @@ class QLSSVC(BaseEstimator):
                     s_new[index] = i
                     if index == self.var - 1:
                         self.cond = s_new[0] / s_new[index]
+                        self.normF = s_new[0]
                         break
                 
                 # computing inverse of F
@@ -106,6 +109,7 @@ class QLSSVC(BaseEstimator):
             u,s,v = np.linalg.svd(F, hermitian=True)
             F = u @ np.diag([ 1/x if x>0 else x for x in s]) @ v
             self.cond = s[0] / s[-1]
+            self.normF = s[0]
             
         sol = np.dot(F, y)
         return sol[0], sol[1:]
@@ -139,7 +143,7 @@ class QLSSVC(BaseEstimator):
             return
         
         if self.low_rank:
-            self.alpha_F = (1/(np.linalg.norm(X, ord=2)**2 / np.linalg.norm(X)**2)) * (np.linalg.norm(np.append(0,y)) / np.linalg.norm(np.append(self.b, self.alpha)))
+            self.alpha_F = (1/(np.linalg.norm(X, ord=2)**2 / np.linalg.norm(X)**2)) * (np.linalg.norm(np.append(0,y)) / (np.linalg.norm(np.append(self.b, self.alpha)) * self.normF))
         else:
             self.alpha_F = 1/(np.linalg.norm(X, ord=2)**2 / np.linalg.norm(X)**2)
 
