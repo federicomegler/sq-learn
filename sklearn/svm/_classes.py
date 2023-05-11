@@ -10,7 +10,6 @@ from ..utils.validation import _deprecate_positional_args
 from ..utils.multiclass import check_classification_targets
 from ..utils.deprecation import deprecated
 from ..metrics.pairwise import linear_kernel, rbf_kernel, polynomial_kernel, sigmoid_kernel
-from scipy.sparse.linalg import cg
 from ..metrics import accuracy_score
 
 class LinearSVC(LinearClassifierMixin,
