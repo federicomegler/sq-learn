@@ -66,6 +66,7 @@ class QLSSVC(BaseEstimator):
         self.cond = None
         self.alpha_F = None
         self.normF = None
+        self.singular_values_F_ = None
 
 
 
@@ -88,6 +89,7 @@ class QLSSVC(BaseEstimator):
                         break
                 
                 # computing inverse of F
+                self.singular_values_F_ = s_new
                 F = u @ np.diag([ 1/x if x>0 else x for x in s_new]) @ v
             elif self.var >= 1.:
                 F = np.r_[[np.append(0,np.ones(N))], np.c_[np.ones(N), self.get_kernel(self.X) + (self.penalty ** -1) * np.identity(N)]]
@@ -101,12 +103,14 @@ class QLSSVC(BaseEstimator):
                         break
                 
                 # computing inverse of F
+                self.singular_values_F_ = s_new
                 F = u @ np.diag([ 1/x if x>0 else x for x in s_new]) @ v
             else:
                 raise Exception("QLSSVC.var shoud be greater than 0")
         else:    
             F = np.r_[[np.append(0,np.ones(N))], np.c_[np.ones(N), self.get_kernel(self.X) + (self.penalty ** -1) * np.identity(N)]]
             u,s,v = np.linalg.svd(F, hermitian=True)
+            self.singular_values_F_ = s
             F = u @ np.diag([ 1/x if x>0 else x for x in s]) @ v
             self.cond = s[0] / s[-1]
             self.normF = s[0]
