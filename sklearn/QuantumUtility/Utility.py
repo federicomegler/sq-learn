@@ -68,6 +68,9 @@ def estimate_wald(measurements):
 def introduce_error(value, epsilon):
     return value + truncnorm.rvs(-epsilon, epsilon, size=1)
 
+def introduce_error_array(array, norm_error):
+    size = array.shape[0]
+    return array + truncnorm.rvs(-norm_error/np.sqrt(size), norm_error/np.sqrt(size), size=size)
 
 def coupon_collect(quantum_state):
     counter = 0

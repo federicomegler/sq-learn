@@ -4,6 +4,7 @@ from ..utils.validation import check_array, check_is_fitted
 from ..metrics.pairwise import linear_kernel, rbf_kernel, sigmoid_kernel, polynomial_kernel
 from ._base import BaseEstimator
 from ..metrics import accuracy_score
+from ..QuantumUtility import introduce_error, introduce_error_array
 
 
 
@@ -43,7 +44,8 @@ class QLSSVC(BaseEstimator):
     """
 
     def __init__(self, kernel='linear', penalty=0.1, degree=3, gamma='scale', coef0=0.0,
-                  verbose=False, algorithm='classic', low_rank=False, var=0.9) -> None:
+                  verbose=False, algorithm='classic', low_rank=False, var=0.9, error_type='absolute', relative_error=0.5, absolute_error=0.01,
+                 train_error=0.01) -> None:
         super().__init__()
         self.kernel = kernel
         self.penalty = penalty
@@ -54,13 +56,24 @@ class QLSSVC(BaseEstimator):
         self.algorithm = algorithm
         self.low_rank = low_rank
         self.var = var
-        
+        self.relative_error = relative_error
+        self.absolute_error = absolute_error
+        if error_type == 'absolute' or error_type == 'relative':
+            self.error_type = error_type
+        else:
+            raise Exception(r"The error should be either 'absolute' or 'relative'")
+        self.train_error = train_error
+
+
         self.alpha = None
         self.b = None
+        self.approx_b = None
+        self.approx_alpha = None
         self.is_fitted_ = False
         self.X = None
         self.normX = None
         self.coef_ = None
+        self.approx_coef_ = None
         self.n_features_in_ = None
         self.Nu = None
         self.cond = None
@@ -139,6 +152,7 @@ class QLSSVC(BaseEstimator):
         """
         X, y = self._validate_data(X, y)
         self.X = X
+        N, d = X.shape
 
         if self.algorithm == 'classic':
             self.b, self.alpha = self._classical_fit(y)
@@ -146,7 +160,7 @@ class QLSSVC(BaseEstimator):
         if self.low_rank:
             self.alpha_F = (1/(np.linalg.norm(X, ord=2)**2 / np.linalg.norm(X)**2)) * (np.linalg.norm(np.append(0,y)) / (np.linalg.norm(np.append(self.b, self.alpha)) * self.normF))
         else:
-            self.alpha_F = 1/(np.linalg.norm(X, ord=2)**2 / np.linalg.norm(X)**2)
+            self.alpha_F = np.sqrt(N) + self.penalty**-1 + np.linalg.norm(X, ord='fro')**2
 
         
         self.Nu = self.b ** 2 + np.sum([self.alpha[index]**2 * np.linalg.norm(x)**2 for index, x in enumerate(self.X)])
@@ -155,6 +169,7 @@ class QLSSVC(BaseEstimator):
         if self.kernel == 'linear':
             N, d = self.X.shape
             self.coef_ = np.zeros(d)
+            self.approx_coef_ = np.zeros(d)
             for i in range(N):
                 ay = self.alpha[i]
                 w = ay * self.X[i]
@@ -189,8 +204,17 @@ class QLSSVC(BaseEstimator):
         check_is_fitted(self)
 
         P = self.get_P(X)
-        y_pred = np.where(P <= 0.5, 1., -1.)
+        betas = self.get_betas(X)
 
+        if self.error_type == 'absolute':
+            for index, p in enumerate(P):
+                P[index] = introduce_error(p, self.absolute_error/(2*betas[index]))
+        else:
+            h = self.get_h(X)
+            for index, p in enumerate(P):
+                P[index] = introduce_error(p, (self.relative_error * np.abs(h[index]))/(2*betas[index]))
+
+        y_pred = np.where(P <= 0.5, 1., -1.)
         return y_pred
     
     def classical_predict(self, X):
@@ -237,7 +261,6 @@ class QLSSVC(BaseEstimator):
     def get_P(self, X):
         check_array(X)
         check_is_fitted(self)
-        N = len(self.X)
         h = self.get_h(X)
         beta = self.get_betas(X)
         P = 0.5 * (1 - h/beta)
@@ -247,19 +270,41 @@ class QLSSVC(BaseEstimator):
     def get_training_complexity(self):
         return self.cond * self.alpha_F
     
-    def get_classifcation_complexity(self, X, relative_error=False, epsilon=1):
+    def get_classification_complexity(self, X, relative_error=False):
         if relative_error:
             betas = self.get_betas(X)
             hs = np.abs(self.get_h(X))
             Ps = self.get_P(X)
             
-            return (self.cond * (betas - hs) * self.alpha_F) / (epsilon * hs * np.sqrt(Ps))
+            return (self.cond * betas * self.alpha_F) / (self.relative_error * hs * self.normF**2 * np.linalg.norm(np.append(self.b, self.alpha), ord=2))
         else:
             betas = self.get_betas(X)
             hs = np.abs(self.get_h(X))
             Ps = self.get_P(X)
 
-            return (self.cond * betas * self.alpha_F) / epsilon
+            return (self.cond * betas * self.alpha_F) / self.absolute_error
+
+
+    def get_approximated_hyperplane(self, x):
+        beta = self.get_betas(x)
+        approx_ba = np.asarray([])
+        if self.error_type == 'absolute':
+            approx_ba = introduce_error_array(np.append(self.b, self.alpha), self.relative_error / beta)
+        else:
+            h = self.get_h(x)
+            approx_ba = introduce_error_array(np.append(self.b, self.alpha), self.relative_error * h / beta)
+
+        b = approx_ba[0]
+        alpha = approx_ba[1:]
+        N, d = self.X.shape
+        approx_coef = np.zeros(d)
+
+        for i in range(N):
+            ay = alpha[i]
+            w = ay * self.X[i]
+            approx_coef = np.add(approx_coef, w)
+
+        return b, approx_coef
 
     def get_all_attributes(self, X):
         betas = self.get_betas(X)
@@ -270,8 +315,6 @@ class QLSSVC(BaseEstimator):
         abs_comp = (cond * betas * self.alpha_F)
 
         return (betas, hs, Ps, cond, rel_comp, abs_comp)
-
-
 
     
     def score(self, X, y):
