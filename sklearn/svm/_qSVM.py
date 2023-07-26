@@ -73,7 +73,6 @@ class QLSSVC(BaseEstimator):
         self.X = None
         self.normX = None
         self.coef_ = None
-        self.approx_coef_ = None
         self.n_features_in_ = None
         self.Nu = None
         self.cond = None
@@ -169,7 +168,6 @@ class QLSSVC(BaseEstimator):
         if self.kernel == 'linear':
             N, d = self.X.shape
             self.coef_ = np.zeros(d)
-            self.approx_coef_ = np.zeros(d)
             for i in range(N):
                 ay = self.alpha[i]
                 w = ay * self.X[i]
@@ -282,7 +280,7 @@ class QLSSVC(BaseEstimator):
             hs = np.abs(self.get_h(X))
             Ps = self.get_P(X)
 
-            return (self.cond * betas * self.alpha_F) / self.absolute_error
+            return (self.cond * betas * self.alpha_F) / (self.absolute_error * self.normF**2 * np.linalg.norm(np.append(self.b, self.alpha), ord=2))
 
 
     def get_approximated_hyperplane(self, x):
