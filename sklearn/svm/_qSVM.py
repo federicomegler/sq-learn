@@ -244,11 +244,18 @@ class QLSSVC(BaseEstimator):
         return y_pred
     
     
-    def get_h(self, X):
+    def get_h(self, X, approx=False):
         check_array(X)
         check_is_fitted(self)
 
-        return np.asarray([(np.dot(self.alpha, self.get_kernel(self.X, [x])) + self.b)[0] for x in X])
+        hs = np.asarray([(np.dot(self.alpha, self.get_kernel(self.X, [x])) + self.b)[0] for x in X])
+        if approx:
+            if self.error_type == 'absolute':
+                hs = np.asarray([introduce_error(h, self.absolute_error)[0] for h in hs])
+                return hs
+            else:
+                hs = np.asarray([introduce_error(h, self.relative_error * np.abs(h))[0] for h in hs])
+        return hs
     
     def get_betas(self, X):
         check_array(X)
@@ -256,12 +263,20 @@ class QLSSVC(BaseEstimator):
         N = len(self.X)
         return np.asarray([np.sqrt((N*np.linalg.norm(x)**2 + 1) * self.Nu) for x in X])
     
-    def get_P(self, X):
+    def get_P(self, X, approx=False):
         check_array(X)
         check_is_fitted(self)
         h = self.get_h(X)
         beta = self.get_betas(X)
         P = 0.5 * (1 - h/beta)
+
+        if approx:
+            if self.error_type == 'absolute':
+                P = np.asarray([introduce_error(
+                    p, self.absolute_error / (2 * beta[index]))[0] for index, p in enumerate(P)])
+            else:
+                P = np.asarray([introduce_error(
+                    p, (self.relative_error * np.abs(h[index])) / (2 * beta[index]))[0] for index, p in enumerate(P)])
 
         return P
     
@@ -272,13 +287,11 @@ class QLSSVC(BaseEstimator):
         if relative_error:
             betas = self.get_betas(X)
             hs = np.abs(self.get_h(X))
-            Ps = self.get_P(X)
+            #Ps = self.get_P(X)
             
-            return (self.cond * betas * self.alpha_F) / (self.relative_error * hs * self.normF**2 * np.linalg.norm(np.append(self.b, self.alpha), ord=2))
+            return (self.cond * betas * self.alpha_F) / (self.relative_error * np.abs(hs) * self.normF**2 * np.linalg.norm(np.append(self.b, self.alpha), ord=2))
         else:
             betas = self.get_betas(X)
-            hs = np.abs(self.get_h(X))
-            Ps = self.get_P(X)
 
             return (self.cond * betas * self.alpha_F) / (self.absolute_error * self.normF**2 * np.linalg.norm(np.append(self.b, self.alpha), ord=2))
 
@@ -290,7 +303,7 @@ class QLSSVC(BaseEstimator):
             approx_ba = introduce_error_array(np.append(self.b, self.alpha), self.relative_error / beta)
         else:
             h = self.get_h(x)
-            approx_ba = introduce_error_array(np.append(self.b, self.alpha), self.relative_error * h / beta)
+            approx_ba = introduce_error_array(np.append(self.b, self.alpha), self.relative_error * np.abs(h) / beta)
 
         b = approx_ba[0]
         alpha = approx_ba[1:]
