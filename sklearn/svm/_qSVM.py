@@ -7,7 +7,6 @@ from ..metrics import accuracy_score
 from ..QuantumUtility import introduce_error, introduce_error_array
 
 
-
 class QLSSVC(BaseEstimator):
     """
     LSSVC implementation. 
@@ -156,10 +155,7 @@ class QLSSVC(BaseEstimator):
         if self.algorithm == 'classic':
             self.b, self.alpha = self._classical_fit(y)
         
-        if self.low_rank:
-            self.alpha_F = (1/(np.linalg.norm(X, ord=2)**2 / np.linalg.norm(X)**2)) * (np.linalg.norm(np.append(0,y)) / (np.linalg.norm(np.append(self.b, self.alpha)) * self.normF))
-        else:
-            self.alpha_F = np.sqrt(N) + self.penalty**-1 + np.linalg.norm(X, ord='fro')**2
+        self.alpha_F = np.sqrt(N) + self.penalty**-1 + np.linalg.norm(X, ord='fro')**2
 
         
         self.Nu = self.b ** 2 + np.sum([self.alpha[index]**2 * np.linalg.norm(x)**2 for index, x in enumerate(self.X)])
@@ -206,11 +202,14 @@ class QLSSVC(BaseEstimator):
 
         if self.error_type == 'absolute':
             for index, p in enumerate(P):
-                P[index] = introduce_error(p, self.absolute_error/(2*betas[index]))
+                P[index] = introduce_error(p, self.absolute_error / (2 * betas[index]))
         else:
             h = self.get_h(X)
+
             for index, p in enumerate(P):
-                P[index] = introduce_error(p, (self.relative_error * np.abs(h[index]))/(2*betas[index]))
+                hhat, delta, abs_err = self.relative_error_routine(0.1, betas[index], np.abs(h[index]))
+                P[index] = introduce_error(p, abs_err / (2 * betas[index]))
+
 
         y_pred = np.where(P <= 0.5, 1., -1.)
         return y_pred
@@ -242,7 +241,24 @@ class QLSSVC(BaseEstimator):
             y_pred[i] = np.sign(np.dot(self.alpha, self.get_kernel(self.X, [X[i][:]])) + self.b)
 
         return y_pred
-    
+
+    def relative_error_routine(self, delta, Xmax, Xreal):
+        r = 0.0
+        Xr = Xmax
+        Xhat = 0.0
+        delta_r = 0.0
+        epsilon_abs = 0
+
+        while Xr > Xhat:
+            if self.verbose:
+                print(r)
+            r = r + 1.0
+            Xr = Xmax / (2**r)
+            epsilon_abs = (self.relative_error * Xr)/2
+            delta_r = (6*delta)/(np.pi**2 * r**2)
+            Xhat = float(introduce_error(Xreal, epsilon_abs))
+
+        return Xhat, delta_r, epsilon_abs
     
     def get_h(self, X, approx=False):
         check_array(X)
@@ -250,11 +266,13 @@ class QLSSVC(BaseEstimator):
 
         hs = np.asarray([(np.dot(self.alpha, self.get_kernel(self.X, [x])) + self.b)[0] for x in X])
         if approx:
+            betas = self.get_betas(X)
             if self.error_type == 'absolute':
                 hs = np.asarray([introduce_error(h, self.absolute_error)[0] for h in hs])
-                return hs
             else:
-                hs = np.asarray([introduce_error(h, self.relative_error * np.abs(h))[0] for h in hs])
+                for index, h in enumerate(hs):
+                    hhat, delta, abs_err = self.relative_error_routine(0.1, betas[index], np.abs(h))
+                    hs[index] = introduce_error(h, abs_err)
         return hs
     
     def get_betas(self, X):
@@ -266,9 +284,9 @@ class QLSSVC(BaseEstimator):
     def get_P(self, X, approx=False):
         check_array(X)
         check_is_fitted(self)
-        h = self.get_h(X)
+        hs = self.get_h(X)
         beta = self.get_betas(X)
-        P = 0.5 * (1 - h/beta)
+        P = 0.5 * (1 - hs/beta)
 
         if approx:
             if self.error_type == 'absolute':
@@ -276,8 +294,7 @@ class QLSSVC(BaseEstimator):
                     p, self.absolute_error / (2 * beta[index]))[0] for index, p in enumerate(P)])
             else:
                 P = np.asarray([introduce_error(
-                    p, (self.relative_error * np.abs(h[index])) / (2 * beta[index]))[0] for index, p in enumerate(P)])
-
+                    p, self.relative_error_routine(0.1, beta[index], np.abs(hs[index]))[2] / (2 * beta[index]))[0] for index, p in enumerate(P)])
         return P
     
     def get_training_complexity(self):
@@ -287,12 +304,9 @@ class QLSSVC(BaseEstimator):
         if relative_error:
             betas = self.get_betas(X)
             hs = np.abs(self.get_h(X))
-            #Ps = self.get_P(X)
-            
             return (self.cond * betas * self.alpha_F) / (self.relative_error * np.abs(hs) * self.normF**2 * np.linalg.norm(np.append(self.b, self.alpha), ord=2))
         else:
             betas = self.get_betas(X)
-
             return (self.cond * betas * self.alpha_F) / (self.absolute_error * self.normF**2 * np.linalg.norm(np.append(self.b, self.alpha), ord=2))
 
 
